@@ -287,6 +287,45 @@ def get_members_by_leader(leader_id: str):
 		db.close()
 
 
+class StatusUpdate(BaseModel):
+	status: str
+
+
+@app.get("/users", response_model=List[UserResponse])
+def list_users():
+	db = SessionLocal()
+	try:
+		users = db.query(User).all()
+		return [
+			UserResponse(
+				id=u.id, full_name=u.full_name, email=u.email, role=u.role, status=u.status
+			)
+			for u in users
+		]
+	finally:
+		db.close()
+
+
+@app.patch("/users/{user_id}/status", response_model=UserResponse)
+def update_user_status(user_id: str, payload: StatusUpdate):
+	db = SessionLocal()
+	try:
+		user = db.get(User, user_id)
+		if not user:
+			raise HTTPException(status_code=404, detail="user not found")
+
+		user.status = payload.status
+		db.add(user)
+		db.commit()
+		db.refresh(user)
+
+		return UserResponse(
+			id=user.id, full_name=user.full_name, email=user.email, role=user.role, status=user.status
+		)
+	finally:
+		db.close()
+
+
 if __name__ == "__main__":
 	import uvicorn
 
