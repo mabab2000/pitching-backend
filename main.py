@@ -4,6 +4,7 @@ import uuid
 import hashlib
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from dotenv import load_dotenv
 from sqlalchemy import (
@@ -73,6 +74,15 @@ class LeaderResponse(BaseModel):
 
 
 app = FastAPI(title="Pitching-backend")
+
+# Enable CORS for all origins
+app.add_middleware(
+	CORSMiddleware,
+	allow_origins=["*"],
+	allow_credentials=True,
+	allow_methods=["*"],
+	allow_headers=["*"],
+)
 
 
 @app.get("/health", tags=["health"])
