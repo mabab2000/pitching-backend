@@ -84,6 +84,15 @@ app.add_middleware(
 	allow_headers=["*"],
 )
 
+# include projects router
+try:
+	from projects import router as projects_router
+
+	app.include_router(projects_router)
+except Exception:
+	# don't fail import if projects module can't be loaded in certain environments
+	pass
+
 
 @app.get("/health", tags=["health"])
 async def health():
