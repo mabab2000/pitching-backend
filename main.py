@@ -3,7 +3,7 @@ import os
 import uuid
 import hashlib
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from dotenv import load_dotenv
@@ -41,6 +41,7 @@ class Member(Base):
 	leader_id = Column(String(36), ForeignKey("users.id"), nullable=False)
 	member_id = Column(String(36), ForeignKey("users.id"), nullable=False)
 	status = Column(String(50), nullable=False)
+	profile_image = Column(String(1024), nullable=True)
 
 
 Base.metadata.create_all(bind=engine)
@@ -73,6 +74,12 @@ class LeaderResponse(BaseModel):
 	full_name: str
 
 
+class MemberInfo(BaseModel):
+	full_name: str
+	email: EmailStr
+	profile_image: Optional[str] = None
+
+
 app = FastAPI(title="Pitching-backend")
 
 # Enable CORS for all origins
@@ -101,6 +108,68 @@ async def health():
 
 def _hash_password(raw: str) -> str:
 	return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _supabase_client():
+	try:
+		from supabase import create_client
+
+		SUPABASE_URL = os.getenv("SUPABASE_URL")
+		SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+		if not SUPABASE_URL or not SUPABASE_KEY:
+			return None
+		return create_client(SUPABASE_URL, SUPABASE_KEY)
+	except Exception:
+		return None
+
+
+@app.post("/members/{member_id}/profile-image")
+async def upload_member_profile_image(member_id: str, file: UploadFile = File(...)):
+	"""Upload a profile image for a member and update the `members.profile_image` field."""
+	supabase = _supabase_client()
+	if not supabase:
+		raise HTTPException(status_code=500, detail="Supabase client not configured (check SUPABASE_URL and SUPABASE_KEY)")
+
+	db = SessionLocal()
+	try:
+		member = db.get(Member, member_id)
+		if not member:
+			raise HTTPException(status_code=404, detail="member not found")
+
+		# prepare destination path
+		dest_path = f"members/{uuid.uuid4()}_{file.filename}"
+		data = await file.read()
+
+		# ensure bucket exists and upload
+		bucket = os.getenv("SUPABASE_BUCKET")
+		if not bucket:
+			raise HTTPException(status_code=500, detail="SUPABASE_BUCKET not configured")
+
+		try:
+			try:
+				supabase.storage.get_bucket(bucket)
+			except Exception:
+				supabase.storage.create_bucket(bucket, public=True)
+
+			supabase.storage.from_(bucket).upload(dest_path, data)
+		finally:
+			await file.close()
+
+		supabase_url = os.getenv("SUPABASE_URL")
+		if supabase_url:
+			public_url = f"{supabase_url}/storage/v1/object/public/{bucket}/{dest_path}"
+		else:
+			public_url = dest_path
+
+		# update member record
+		member.profile_image = public_url
+		db.add(member)
+		db.commit()
+		db.refresh(member)
+
+		return {"member_id": member_id, "profile_image": public_url}
+	finally:
+		db.close()
 
 
 @app.post("/users", response_model=UserResponse)
@@ -194,6 +263,26 @@ def get_leaders():
 	try:
 		leaders = db.query(User).filter(User.role.ilike("leader")).all()
 		return [LeaderResponse(id=u.id, full_name=u.full_name) for u in leaders]
+	finally:
+		db.close()
+
+
+@app.get("/members/leader/{leader_id}", response_model=List[MemberInfo])
+def get_members_by_leader(leader_id: str):
+	db = SessionLocal()
+	try:
+		rows = (
+			db.query(User, Member)
+			.join(Member, Member.member_id == User.id)
+			.filter(Member.leader_id == leader_id)
+			.all()
+		)
+		result = []
+		for user, member in rows:
+			result.append(
+				MemberInfo(full_name=user.full_name, email=user.email, profile_image=member.profile_image)
+			)
+		return result
 	finally:
 		db.close()
 
