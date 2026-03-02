@@ -314,8 +314,17 @@ def update_user_status(user_id: str, payload: StatusUpdate):
 		if not user:
 			raise HTTPException(status_code=404, detail="user not found")
 
+		# Update user status
 		user.status = payload.status
 		db.add(user)
+
+		# If the user is a member, also update the members table for that member_id
+		if user.role and user.role.lower() == "member":
+			members = db.query(Member).filter(Member.member_id == user.id).all()
+			for m in members:
+				m.status = payload.status
+				db.add(m)
+
 		db.commit()
 		db.refresh(user)
 
