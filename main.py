@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 import os
 import uuid
 import hashlib
@@ -65,6 +65,11 @@ class UserResponse(BaseModel):
 class LoginRequest(BaseModel):
 	email: EmailStr
 	password: str
+
+
+class LeaderResponse(BaseModel):
+	id: str
+	full_name: str
 
 
 app = FastAPI(title="Pitching-backend")
@@ -160,6 +165,16 @@ def login(payload: LoginRequest):
 			role=user.role,
 			status=status,
 		)
+	finally:
+		db.close()
+
+
+@app.get("/leaders", response_model=List[LeaderResponse])
+def get_leaders():
+	db = SessionLocal()
+	try:
+		leaders = db.query(User).filter(User.role.ilike("leader")).all()
+		return [LeaderResponse(id=u.id, full_name=u.full_name) for u in leaders]
 	finally:
 		db.close()
 
