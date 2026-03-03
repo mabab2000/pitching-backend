@@ -1,9 +1,10 @@
 import os
 import uuid
+from typing import Optional, List
 from dotenv import load_dotenv
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, String, Text
+from pydantic import BaseModel, EmailStr
+from sqlalchemy import create_engine, Column, String, Text, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 load_dotenv()
@@ -27,6 +28,25 @@ class Project(Base):
     leader_image = Column(String(1024), nullable=True)
 
 
+class User(Base):
+    __tablename__ = "users"
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    full_name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False, unique=True, index=True)
+    password = Column(String(128), nullable=False)
+    role = Column(String(50), nullable=False)
+    status = Column(String(50), nullable=False)
+
+
+class Member(Base):
+    __tablename__ = "members"
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    leader_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+    member_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+    status = Column(String(50), nullable=False)
+    profile_image = Column(String(1024), nullable=True)
+
+
 Base.metadata.create_all(bind=engine)
 
 router = APIRouter()
@@ -39,6 +59,27 @@ class ProjectCreateResponse(BaseModel):
     description: str | None
     project_image_url: str | None
     leader_image_url: str | None
+
+
+class MemberDetail(BaseModel):
+    name: str
+    email: str
+    image: str | None
+
+
+class ProjectLeader(BaseModel):
+    full_name: str
+    email: str
+    profile_image: str | None
+    members: List[MemberDetail]
+
+
+class ProjectDetail(BaseModel):
+    id: str
+    project_name: str
+    description: str | None
+    project_profile_image: str | None
+    project_leader: ProjectLeader
 
 
 def _supabase_client():
@@ -134,6 +175,59 @@ def get_projects_by_leader(leader_id: str):
             )
             for r in rows
         ]
+    finally:
+        db.close()
+
+
+@router.get("/projects", response_model=list[ProjectDetail])
+def get_all_projects():
+    """
+    Retrieve all projects with complete details including:
+    - Project profile image, name, description
+    - Project leader fullname, email, profile image
+    - Members name, image, email (only for leaders who have members)
+    """
+    db = SessionLocal()
+    try:
+        projects = db.query(Project).all()
+        result = []
+
+        for project in projects:
+            # Get project leader information
+            leader = db.query(User).filter(User.id == project.leader_id).first()
+            if not leader:
+                continue
+
+            # Get members of this leader
+            members_data = db.query(User, Member).join(
+                Member, Member.member_id == User.id
+            ).filter(Member.leader_id == project.leader_id).all()
+
+            members = [
+                MemberDetail(
+                    name=user.full_name,
+                    email=user.email,
+                    image=member.profile_image
+                )
+                for user, member in members_data
+            ]
+
+            # Build project detail
+            project_detail = ProjectDetail(
+                id=project.id,
+                project_name=project.project_name,
+                description=project.description,
+                project_profile_image=project.project_image,
+                project_leader=ProjectLeader(
+                    full_name=leader.full_name,
+                    email=leader.email,
+                    profile_image=project.leader_image,
+                    members=members
+                )
+            )
+            result.append(project_detail)
+
+        return result
     finally:
         db.close()
 
