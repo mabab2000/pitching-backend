@@ -73,11 +73,11 @@ class LeaderResponse(BaseModel):
 	id: str
 	full_name: str
 
-
 class MemberInfo(BaseModel):
 	full_name: str
 	email: EmailStr
 	profile_image: Optional[str] = None
+	status: str
 
 
 app = FastAPI(title="Pitching-backend")
@@ -280,7 +280,7 @@ def get_members_by_leader(leader_id: str):
 		result = []
 		for user, member in rows:
 			result.append(
-				MemberInfo(full_name=user.full_name, email=user.email, profile_image=member.profile_image)
+				MemberInfo(full_name=user.full_name, email=user.email, profile_image=member.profile_image, status=member.status)
 			)
 		return result
 	finally:
