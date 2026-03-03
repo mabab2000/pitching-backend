@@ -253,6 +253,39 @@ def get_projects_by_leader(leader_id: str):
         db.close()
 
 
+@router.get("/projects/by-member/{member_id}", response_model=list[ProjectCreateResponse])
+def get_projects_by_member(member_id: str):
+    """
+    Retrieve all projects for a specific member by member_id.
+    First finds the leader_id from members table, then returns all projects for that leader.
+    """
+    db = SessionLocal()
+    try:
+        # Find the member record to get the leader_id
+        member_record = db.query(Member).filter(Member.member_id == member_id).first()
+        if not member_record:
+            raise HTTPException(status_code=404, detail="Member not found")
+        
+        leader_id = member_record.leader_id
+
+        # Get all projects for this leader
+        rows = db.query(Project).filter(Project.leader_id == leader_id).all()
+        return [
+            ProjectCreateResponse(
+                id=r.id,
+                leader_id=r.leader_id,
+                project_name=r.project_name,
+                description=r.description,
+                project_image_url=r.project_image,
+                leader_image_url=r.leader_image,
+                project_link=r.project_link,
+            )
+            for r in rows
+        ]
+    finally:
+        db.close()
+
+
 @router.get("/projects/member/{member_id}", response_model=List[MemberInfo])
 def get_member_projects(member_id: str):
     """
