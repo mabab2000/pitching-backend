@@ -82,6 +82,19 @@ class ProjectDetail(BaseModel):
     project_leader: ProjectLeader
 
 
+class MemberInfo(BaseModel):
+    member_id: str
+    name: str
+    email: str
+    profile_image: str | None
+    status: str
+
+
+class MemberProjectsResponse(BaseModel):
+    projects: List[ProjectCreateResponse]
+    members: List[MemberInfo]
+
+
 def _supabase_client():
     try:
         from supabase import create_client
@@ -228,6 +241,42 @@ def get_projects_by_leader(leader_id: str):
             )
             for r in rows
         ]
+    finally:
+        db.close()
+
+
+@router.get("/projects/member/{member_id}", response_model=List[MemberInfo])
+def get_member_projects(member_id: str):
+    """
+    Retrieve all members for a specific member by member_id only.
+    First finds the leader_id from members table, then returns all members under the same leader.
+    """
+    db = SessionLocal()
+    try:
+        # Find the member record to get the leader_id
+        member_record = db.query(Member).filter(Member.member_id == member_id).first()
+        if not member_record:
+            raise HTTPException(status_code=404, detail="Member not found")
+        
+        leader_id = member_record.leader_id
+
+        # Get all members for this leader
+        members_data = db.query(User, Member).join(
+            Member, Member.member_id == User.id
+        ).filter(Member.leader_id == leader_id).all()
+
+        members_list = [
+            MemberInfo(
+                member_id=member.member_id,
+                name=user.full_name,
+                email=user.email,
+                profile_image=member.profile_image,
+                status=member.status
+            )
+            for user, member in members_data
+        ]
+
+        return members_list
     finally:
         db.close()
 
