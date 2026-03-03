@@ -73,6 +73,8 @@ class LeaderResponse(BaseModel):
 	id: str
 	full_name: str
 
+
+
 class MemberInfo(BaseModel):
 	member_id: str
 	full_name: str
@@ -133,7 +135,7 @@ async def upload_member_profile_image(member_id: str, file: UploadFile = File(..
 
 	db = SessionLocal()
 	try:
-		member = db.get(Member, member_id)
+		member = db.query(Member).filter(Member.member_id == member_id).first()
 		if not member:
 			raise HTTPException(status_code=404, detail="member not found")
 

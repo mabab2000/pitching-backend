@@ -26,6 +26,7 @@ class Project(Base):
     description = Column(Text, nullable=True)
     project_image = Column(String(1024), nullable=True)
     leader_image = Column(String(1024), nullable=True)
+    project_link = Column(String(1024), nullable=True)
 
 
 class User(Base):
@@ -59,6 +60,7 @@ class ProjectCreateResponse(BaseModel):
     description: str | None
     project_image_url: str | None
     leader_image_url: str | None
+    project_link: str | None
 
 
 class MemberDetail(BaseModel):
@@ -79,6 +81,7 @@ class ProjectDetail(BaseModel):
     project_name: str
     description: str | None
     project_profile_image: str | None
+    project_link: str | None
     project_leader: ProjectLeader
 
 
@@ -135,6 +138,7 @@ async def create_project(
     description: str = Form(None),
     project_image: UploadFile = File(...),
     leader_image: UploadFile = File(...),
+    project_link: str = Form(None),
 ):
     supabase = _supabase_client()
     if not supabase:
@@ -155,6 +159,7 @@ async def create_project(
             description=description,
             project_image=project_image_url,
             leader_image=leader_image_url,
+            project_link=project_link,
         )
         db.add(proj)
         db.commit()
@@ -167,6 +172,7 @@ async def create_project(
             description=proj.description,
             project_image_url=proj.project_image,
             leader_image_url=proj.leader_image,
+            project_link=proj.project_link,
         )
     finally:
         db.close()
@@ -211,6 +217,7 @@ def get_all_projects():
                 project_name=project.project_name,
                 description=project.description,
                 project_profile_image=project.project_image,
+                project_link=project.project_link,
                 project_leader=ProjectLeader(
                     full_name=leader.full_name,
                     email=leader.email,
@@ -238,6 +245,7 @@ def get_projects_by_leader(leader_id: str):
                 description=r.description,
                 project_image_url=r.project_image,
                 leader_image_url=r.leader_image,
+                project_link=r.project_link,
             )
             for r in rows
         ]
